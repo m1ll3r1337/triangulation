@@ -41,4 +41,8 @@ public class Polygon {
     public ArrayList<Integer> getNormalIndices() {
         return normalIndices;
     }
+
+
+
+
 }

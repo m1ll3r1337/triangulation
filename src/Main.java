@@ -1,5 +1,5 @@
 import Model.Model;
-import com.cgvsu.model.Model;
+
 import objreader.ObjReader;
 
 import java.io.IOException;
