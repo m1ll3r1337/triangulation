@@ -1,207 +1,174 @@
 import Model.Model;
 import Model.Polygon;
 import Model.TriPolyModel;
-import math.Vector2f;
+import Model.Tetrahedron;
 import math.Vector3f;
+import Model.Triangle3D;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
+import java.util.*;
 
 
 public class DelaunayTriangulation {
 
-    private static final double EPSILON = 1e-12;
-    public static float crossProduct(Vector2f a, Vector2f b){
-        return a.getX()*b.getX() - a.getY()*b.getY();
-    }
 
-    static class Edge {
-        int a, b;
-
-        Edge(int a, int b)
-        {
-            this.a = a;
-            this.b = b;
-        }
-    }
-
-    private static class Point {
-        float x, y;
-
-        Point(float x, float y)
-        {
-            this.x = x;
-            this.y = y;
-        }
-    }
-    public static TriPolyModel triangulate(Model model) {
-        TriPolyModel result = new TriPolyModel();
-
-        for(Map.Entry<Polygon,ArrayList<Vector3f>> entry : getPolyVertMap(model).entrySet()) {
-
+    public static TriPolyModel getTriangulatedModel(Model model) {
+        TriPolyModel triangulatedPolygonsModel = new TriPolyModel();
+        triangulatedPolygonsModel.textureVertices = model.textureVertices;
+        triangulatedPolygonsModel.vertices = model.vertices;
+        HashMap<Polygon, ArrayList<Vector3f>> polyVertMap = new HashMap<>(getPolyVertMap(model));
+        for (Map.Entry<Polygon, ArrayList<Vector3f>> entry : polyVertMap.entrySet()
+        ) {
             Polygon polygon = entry.getKey();
             ArrayList<Vector3f> vertices = entry.getValue();
-
-            int n = vertices.size();
-
-            List<Edge> edges = new ArrayList<>();
-
-
-            // sorting the points by x-coordinate
-           ArrayList<Vector2f> sorted = new ArrayList<>();
-           TreeMap<Vector2f, Integer> vecOrderMap = new TreeMap<>();
-            for (int i = 0; i < n; i++) {
-                Vector2f vec2f = new Vector2f(vertices.get(i).getX(),(vertices.get(i).getY()));
-                vecOrderMap.put(vec2f,i+1);
-                sorted.set(i,vec2f);
-            }
-            sorted = sortByX(sorted, 0, n - 1);
-
-            // creating the lower hull
-            for (int i = 0; i < n; i++) {
-                while (edges.size() >= 2) {
-                    int j = edges.size() - 2;
-                    int k = edges.size() - 1;
-                    Vector2f A = sorted.get(edges.get(j).a);
-                    Vector2f B = sorted.get(edges.get(j).b);
-                    Vector2f C = sorted.get(edges.get(k).b);
-
-                    if (crossProduct(
-                            new Vector2f(B.getX() - A.getX(), B.getY() - A.getY()), // why 0 ??
-                            new Vector2f(C.getX() - B.getX(), C.getY() - B.getY()))
-                            > 0) {
-                        break;
-                    }
-
-                    edges.remove(edges.size() - 1);
-                }
-                edges.add(new Edge(edges.size(), i));
-            }
-            int lower = edges.size();
-            // creating the upper hull
-            for (int i = n - 2, t = lower + 1; i >= 0; i--) {
-                while (edges.size() >= t) {
-                    int j = edges.size() - 2;
-                    int k = edges.size() - 1;
-                    Vector2f A = sorted.get(edges.get(j).a);
-                    Vector2f B = sorted.get(edges.get(j).b);
-                    Vector2f C = sorted.get(edges.get(k).b);
-
-                    if (crossProduct(
-                            new Vector2f(B.getX() - A.getX(), B.getY() - A.getY()), // why 0 ??
-                            new Vector2f(C.getX() - B.getX(), C.getY() - B.getY()))
-                            > 0) {
-                        break;
-                    }
-
-                    edges.remove(edges.size() - 1);
-                }
-                edges.add(new Edge(i, edges.size()));
+            List<Triangle3D> triangulatedPolygons = new ArrayList<>();
+            triangulatedPolygons = triangulate(vertices);
+            for (Triangle3D triangle : triangulatedPolygons
+                 ) {
+                Polygon triangulatedPolygon = new Polygon();
+                ArrayList<Integer> polyVert = new ArrayList<>();
+                polyVert.add(model.vertices.indexOf(triangle.getA()));
+                polyVert.add(model.vertices.indexOf(triangle.getB()));
+                polyVert.add(model.vertices.indexOf(triangle.getC()));
+                triangulatedPolygon.setVertexIndices(polyVert);
+                triangulatedPolygon.setNormalIndices(entry.getKey().getNormalIndices());
+                triangulatedPolygon.setTextureVertexIndices(entry.getKey().getTextureVertexIndices());
+                triangulatedPolygonsModel.polygons.add(triangulatedPolygon);
             }
 
-            // removing the duplicate edges from the hull
-            edges.remove(edges.size() - 1);
-
-            // creating the triangulation
-            ArrayList<Integer> newVerticesIndices = new ArrayList<Integer>();
-            for (Edge edge : edges) {
-                int a = edge.a;
-                int b = edge.b;
-                Vector2f A = sorted.get(a);
-                Vector2f B = sorted.get(b);
-                boolean flag = true;
-                model.vertices.indexOf(A);
 
 
-                for (int j = 0; j < n; j++) {
-                    if (j == a || j == b) {
-                        continue;
-                    }
-                    Vector2f P = sorted.get(j);
-                    if (insideCircle(A, B, P,
-                            sorted.get(a + b >> 1))) {
-                        flag = false;
-                        break;
-                    }
-                }
-                if (flag) {
-                    newVerticesIndices.add(vecOrderMap.get(A));
-                    newVerticesIndices.add(vecOrderMap.get(B));
-                }
-            }
 
 
         }
-        return result;
+        return triangulatedPolygonsModel;
     }
 
-    private static boolean insideCircle(Vector2f A, Vector2f B,
-                                        Vector2f C, Vector2f P)
-    {
-        double ax = A.getX() - P.getX();
-        double ay = A.getY() - P.getY();
-        double bx = B.getX() - P.getX();
-        double by = B.getY() - P.getY();
-        double cx = C.getX() - P.getX();
-        double cy = C.getY() - P.getY();
+    // Function to perform 3D Delaunay triangulation
+    public static List<Triangle3D> triangulate(List<Vector3f> points) {
+        // Add an initial tetrahedron to cover all points or first 4 points to start
+        List<Triangle3D> polygons = new ArrayList<>();
+        // Create a super tetrahedron that bounds all the points
+        Tetrahedron superTetrahedron = createSuperTetrahedron(points);
 
-        double a2 = ax * ax + ay * ay;
-        double b2 = bx * bx + by * by;
-        double c2 = cx * cx + cy * cy;
+        // Initialize triangulation with the super tetrahedron
+        List<Tetrahedron> tetrahedrons = new ArrayList<>();
+        tetrahedrons.add(superTetrahedron);
+        ArrayList<Triangle3D> triangles = new ArrayList<>();
 
-        return (ax * (by - cy) + bx * (cy - ay)
-                + cx * (ay - by))
-                >= EPSILON;
+        // Iteratively add points to the triangulation
+        for (Vector3f point : points) {
+            Set<Tetrahedron> badTetrahedrons = new HashSet<>();
+
+            // Find all triangles that are affected by the new point
+            for (Tetrahedron tetrahedron : tetrahedrons) {
+                if (tetrahedron.isPointInsideCircumsphere(point)) {
+                    badTetrahedrons.add(tetrahedron);
+                    triangles.addAll(tetrahedron.getFaces());
+                }
+            }
+
+//            // Get the boundary edges of the affected triangles
+//            Set<Edge3D> boundaryEdges = getBoundaryEdges(badTetrahedrons);
+
+            // Remove the bad triangles from the triangulation
+            tetrahedrons.removeAll(badTetrahedrons);
+
+            // Add new triangles formed by connecting the point with boundary edges
+//            for (Edge3D edge : boundaryEdges) {
+//                Triangle3D newTriangle = new Triangle3D(edge.getStart(), edge.getEnd(), point);
+//                tetrahedron.add(newTriangle);
+//            }
+//        }
+            ArrayList<Triangle3D> badTriangles = new ArrayList<>();
+            for (Triangle3D e1 : triangles) {
+                for (Triangle3D e2 : triangles) {
+                    if (e1 == e2) {
+                        continue;
+                    }
+                    if (e1.equals(e2)) {
+                        badTriangles.add(e1);
+                        badTriangles.add(e2);
+                    }
+                }
+            }
+            triangles.removeAll(badTriangles);
+            // Remove triangles that belong to the super tetrahedron
+            tetrahedrons.remove(superTetrahedron);
+
+            for (Tetrahedron tetrahedron : tetrahedrons) {
+                polygons.addAll(tetrahedron.getFaces());
+            }
+
+        }
+        return polygons;
     }
 
-    private static TreeMap<Polygon, ArrayList<Vector3f>> getPolyVertMap(Model model) {
-        TreeMap<Polygon, ArrayList<Vector3f>> polyVertMap = new TreeMap<>();
+    // Function to create a super tetrahedron containing all points
+    private static Tetrahedron createSuperTetrahedron(List<Vector3f> points) {
+
+        // Logic to create a tetrahedron containing all points
+        // This could be a bounding box or another method to enclose all the points
+        // Return the initial tetrahedron
+        float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
+        float maxX = Float.MIN_VALUE, maxY = Float.MIN_VALUE, maxZ = Float.MIN_VALUE;
+
+        for (Vector3f point : points) {
+            minX = Math.min(minX, point.getX());
+            minY = Math.min(minY, point.getY());
+            minZ = Math.min(minZ, point.getZ());
+
+            maxX = Math.max(maxX, point.getX());
+            maxY = Math.max(maxY, point.getY());
+            maxZ = Math.max(maxZ, point.getZ());
+        }
+
+        // Create vertices of the tetrahedron using extreme coordinates
+        Vector3f v1 = new Vector3f(minX, minY, minZ);
+        Vector3f v2 = new Vector3f(minX, maxY, maxZ);
+        Vector3f v3 = new Vector3f(maxX, minY, maxZ);
+        Vector3f v4 = new Vector3f(maxX, maxY, minZ);
+        Triangle3D face1 = new Triangle3D(v1,v2,v3);
+        Triangle3D face2 = new Triangle3D(v1, v2, v3);
+        Triangle3D face3 = new Triangle3D(v1, v2, v3);
+        Triangle3D face4 = new Triangle3D(v1, v2, v3);
+        ArrayList<Triangle3D> faces = new ArrayList<>();
+        faces.add(face1);
+        faces.add(face2);
+        faces.add(face3);
+        faces.add(face4);
+        // Create and return a tetrahedron with the found vertices
+        return new Tetrahedron(faces, v1,v2,v3,v4);
+    }
+
+    // Function to get the boundary edges from a set of triangles
+//    private Set<Edge3D> getBoundaryEdges(Set<Triangle3D> triangles) {
+//        // Logic to extract boundary edges from the set of triangles
+//        // Return the boundary edges
+//    }
+//
+//    // Function to remove triangles that belong to the super tetrahedron
+//    private void removeSuperTetrahedronTriangles(List<Triangle3D> triangulation) {
+//        // Logic to remove triangles that belong to the super tetrahedron
+//    }
+
+
+    private static HashMap<Polygon, ArrayList<Vector3f>> getPolyVertMap(Model model) {
+        HashMap<Polygon, ArrayList<Vector3f>> polyVertMap = new HashMap<>();
         ArrayList<Vector3f> polyVertices = new ArrayList<>();
         for (Polygon poly : model.polygons
         ) {
-            for (Integer ind: poly.getVertexIndices()
-                 ) {
+            for (Integer ind : poly.getVertexIndices()
+            ) {
                 polyVertices.add(model.vertices.get(ind));
             }
             polyVertMap.put(poly, polyVertices);
-            polyVertices.clear();
+            polyVertices = new ArrayList<>();
         }
-       return polyVertMap;
+        return polyVertMap;
     }
+
+
 
     // function to sort the points by x-coordinate
-    private static ArrayList<Vector2f> sortByX(ArrayList<Vector2f> vert,
-                                               int start, int end)
-    {
-        if (start >= end) {
-            return vert;
-        }
-        int pivot = partition(vert, start, end);
-        sortByX(vert, start, pivot - 1);
-        sortByX(vert, pivot + 1, end);
-        return vert;
-    }
 
-    // function to partition the points for quick sort
-    private static int partition(ArrayList<Vector2f> vert, int start,
-                                 int end)
-    {
-        Vector2f pivot = vert.get(end);
-        int i = start - 1;
-        for (int j = start; j <= end - 1; j++) {
-            if (vert.get(j).getX() <= pivot.getX()) {
-                i++;
-                Vector2f temp = vert.get(i);
-                vert.set(i,vert.get(j));
-                vert.set(j,temp);
-            }
-        }
-        Vector2f temp = vert.get(i+1);
-        vert.set(i+1, vert.get(end));
-        vert.set(end, temp);
-        return i + 1;
-    }
 }
