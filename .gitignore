@@ -9,5 +9,6 @@
 .idea/
 /3DModels/
 /ObjReaderInitial/
-out/
+/out/
 src/Main.java
+.gitignore
